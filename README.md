@@ -72,9 +72,9 @@ O estudo foi realizado com dados reais coletados em bancada experimental, sem aq
 ## ▶️ Como Executar
 
 ```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git
-pip install pandas numpy matplotlib
-jupyter notebook
+1 - git clone https://github.com/vitorvespoli/MachineLearning_Trabalho1.git
+2 - pip install pandas numpy matplotlib
+3 - jupyter notebook
 ```
 
 ## 👨‍💻 Integrantes
