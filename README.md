@@ -86,4 +86,4 @@ O estudo foi realizado com dados reais coletados em bancada experimental, sem aq
 
 ---
 
-Projeto com finalidade acadêmica e educacional.
+O projeto foi realizado com finalidade acadêmica e educacional.
