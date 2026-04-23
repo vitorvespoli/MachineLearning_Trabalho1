@@ -73,8 +73,8 @@ O estudo foi realizado com dados reais coletados em bancada experimental, sem aq
 
 ```bash
 1 - git clone https://github.com/vitorvespoli/MachineLearning_Trabalho1.git
-2 - pip install pandas numpy matplotlib
-3 - jupyter notebook
+2 - pip install -r requirements.txt
+3 - abrir o jupyter notebook
 ```
 
 ## 👨‍💻 Integrantes
