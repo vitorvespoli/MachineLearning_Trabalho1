@@ -3,7 +3,7 @@
 <img width="1920" height="1080" alt="capa" src="pics/capa.png" />
 
 
-Projeto desenvolvido como parte da disciplina de **Machine Learning**, ministrada pelo professor **Samir Angelo Milani Martins**, com foco em análise de dados e aprendizado de máquina para identificação de padrões e possíveis falhas estruturais em motores brushless utilizados em aeronaves de aerodesing.
+Projeto desenvolvido como parte da disciplina de **Machine Learning**, ministrada pelo professor **Samir Angelo Milani Martins**, com foco em análise de dados e aprendizado de máquina para identificação de padrões e possíveis falhas estruturais em motores brushless utilizados em aeronaves de aerodesign.
 
 ---
 
