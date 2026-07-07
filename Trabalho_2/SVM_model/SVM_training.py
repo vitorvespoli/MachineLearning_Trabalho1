@@ -10,6 +10,7 @@ import seaborn as sns
 import os
 import statistics as st
 from sklearn.model_selection import GridSearchCV
+import joblib
 
 thisFolder = os.path.dirname(__file__)
 dataFolder = os.path.join(thisFolder, "dados")
@@ -98,78 +99,14 @@ def transitory_stacionary(df):
     return df_0, df_1, df_2
 
 
-
-class statisticsParams:
-    def __init__(self, name = None, df = None, tr1_qty = None, regime_qty = None, tr2_qty = None):
-        
-        # Inicialização dos dicionários vazios
-        mean = {}
-        median = {}
-        max = {}
-        min = {}
-        desv_padr = {}
-        skew = {}
-        kurtosis = {}
-        mode = {}
-
-        # Caso haja um argumento de df não nulo:
-        if df is not None:
-
-            # Adquire a lista com o cabeçalho do dataframe
-            header = df.columns.to_list()    
-
-            # Para cada elemento na lista do cabecalho...
-            for h in header:
-                mean[h] = df[h].mean()  # Adquire o valor da média para o parâmetro atual
-                median[h] = df[h].median()  # Adquire o valor da mediana para o parâmetro atual
-                max[h] = df[h].max()    # Adquire o valor máximo para o parâmetro atual
-                min[h] = df[h].min()    # Adquire o valor mínimo para o parâmetro atual
-                desv_padr[h] = st.stdev(df[h])  # Adquire o desvio padrão para o parâmetro atual
-                skew[h] = df[h].skew()  # Adquire a assimetria entre os dados para o parâmetro atual
-                kurtosis[h] = df[h].kurtosis()  # Adquire o excesso de curtose para o parâmetro atual
-                mode[h] = st.mode(df[h])    # Adquire a moda para o parâmetro atual
-
-            # Armazenamento do que foi medido nos parâmetros do objeto
-            self.name = name
-            self.header = header
-            self.mean = mean
-            self.median = median
-            self.max = max
-            self.min = min
-            self.desv_padr = desv_padr
-            self.skew = skew
-            self.kurtosis = kurtosis
-            self.mode = mode
-
-            # Armazenamento nos parâmetros do objeto da quantidade de dados para cada regime de operação, sendo esses argumentos da classe.
-            self.tr1_qty = tr1_qty
-            self.regime_qty = regime_qty
-            self.tr2_qty = tr2_qty
-
-        # Caso o argumento "df" seja "None", os parâmetros da função se mantém como definidos no início, strings vazias ou zeros
-        else:
-            self.name = ""
-            self.mean = mean
-            self.median = median
-            self.max = max
-            self.min = min
-            self.desv_padr = desv_padr
-            self.skew = skew
-            self.kurtosis = kurtosis
-            self.mode = mode
-
-            self.tr1_qty = 0
-            self.regime_qty = 0
-            self.tr2_qty = 0
-
-
 def trainModel(dados_extraidos):
     df = pd.DataFrame(dados_extraidos)
 
     X = df.drop('condicao', axis=1)
     y = df['condicao']
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=y)
+    print(X_train)
 
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
@@ -190,7 +127,7 @@ def trainModel(dados_extraidos):
 
     y_pred = melhor_modelo.predict(X_test)
 
-    print("\n=== Relatório do Modelo Otimizado ===")
+    print("\n=== Relatório do modelo após validaçcão cruzada ===")
     print(classification_report(y_test, y_pred))
 
     cm = confusion_matrix(y_test, y_pred, labels=melhor_modelo.classes_)
@@ -200,6 +137,8 @@ def trainModel(dados_extraidos):
     plt.ylabel('Condição Real')
     plt.xlabel('Condição Prevista')
     plt.show()
+
+    return melhor_modelo
 
 
 def validacaoCruzada(dados_extraidos):
@@ -230,6 +169,13 @@ def validacaoCruzada(dados_extraidos):
 
     print("Melhores hiperparâmetros:", grid_search.best_params_)
     print("Melhor desempenho médio na validação:", grid_search.best_score_)
+
+
+def exportarModelo(modelo):
+    joblib.dump(modelo, os.path.join(thisFolder,"SVM_bestModel_selectedFeatures.pkl"))
+
+def carregarModelo(caminho):
+    return joblib.load(caminho)
 
 
 dados_extraidos = []
@@ -263,6 +209,7 @@ for fold in folders: # Para cada chave definida no dicionário "folders" definid
         df_i = df_i.drop(columns="Celula3_Kgf")
         df_i = df_i.drop(columns="Tempo")
         df_i = df_i.drop(columns="RPM")
+        df_i = df_i.drop(columns="Potencia_W")
     
         df_0, df_1, df_2 = transitory_stacionary(df_i)  # Segmenta o dataframe "df_i" nos dataframes de transitórios (df_0 e df_2) e regime permanente (df_1)
 
@@ -270,28 +217,30 @@ for fold in folders: # Para cada chave definida no dicionário "folders" definid
         tr1_tot_qty = len(df_0)
         regime_tot_qty = len(df_1)
         tr2_tot_qty = len(df_2)
-        
-        windowLenght = 300
+
+        df_1.dropna()
+        windowLenght = 50
         if not df_1.empty:
             for inicio in range(0, len(df_1), windowLenght):
                 
                 janela = df_1.iloc[inicio : inicio + windowLenght]
                 
-                if not janela.empty:
+                if len(janela) >= 10:
                     estatisticas_arquivo = {'condicao': fold}
                     
                     for coluna in df_1.columns:
                         
-                        estatisticas_arquivo[f'{coluna}_mean'] = df_1[coluna].mean()
-                        estatisticas_arquivo[f'{coluna}_std'] = df_1[coluna].std()
-                        estatisticas_arquivo[f'{coluna}_max'] = df_1[coluna].max()
-                        estatisticas_arquivo[f'{coluna}_min'] = df_1[coluna].min()
-                        estatisticas_arquivo[f'{coluna}_median'] = df_1[coluna].median()
-                        estatisticas_arquivo[f'{coluna}_skew'] = df_1[coluna].skew()
-                        estatisticas_arquivo[f'{coluna}_kurtosis'] = df_1[coluna].kurtosis()
-                        estatisticas_arquivo[f'{coluna}_rms'] = np.sqrt(np.mean(df_1[coluna]**2))
+                        estatisticas_arquivo[f'{coluna}_mean'] = janela[coluna].mean()
+                        estatisticas_arquivo[f'{coluna}_std'] = janela[coluna].std()
+                        #estatisticas_arquivo[f'{coluna}_max'] = df_1[coluna].max()
+                        #estatisticas_arquivo[f'{coluna}_min'] = df_1[coluna].min()
+                        #estatisticas_arquivo[f'{coluna}_median'] = df_1[coluna].median()
+                        estatisticas_arquivo[f'{coluna}_skew'] = janela[coluna].skew()
+                        estatisticas_arquivo[f'{coluna}_kurtosis'] = janela[coluna].kurtosis()
+                        estatisticas_arquivo[f'{coluna}_rms'] = np.sqrt(np.mean(janela[coluna]**2))
                     
                     dados_extraidos.append(estatisticas_arquivo)
 
 #validacaoCruzada(dados_extraidos)
-trainModel(dados_extraidos)
+modelo = trainModel(dados_extraidos)
+#exportarModelo(modelo)
