@@ -15,7 +15,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -83,8 +83,8 @@ def transitory_stacionary(df):
     return df_0, df_1, df_2
 
 
-def window_statistics(df, condicao, arquivo):
-    row = {"condicao": condicao, "arquivo": arquivo}
+def window_statistics(df, condicao):
+    row = {"condicao": condicao}
 
     for coluna in df.columns:
         valores = df[coluna].dropna()
@@ -92,27 +92,17 @@ def window_statistics(df, condicao, arquivo):
         if valores.empty:
             continue
 
-        rms = np.sqrt(np.mean(valores**2))
-        val_max = valores.max()
-        val_min = valores.min()
-        q75, q25 = np.percentile(valores, [75, 25])
-
-        row[f"{coluna}_media"] = valores.mean()
-        row[f"{coluna}_mediana"] = valores.median()
-        row[f"{coluna}_desvio_padrao"] = valores.std()
+        row[f"{coluna}_mean"] = valores.mean()
+        row[f"{coluna}_std"] = valores.std()
         row[f"{coluna}_skew"] = valores.skew()
         row[f"{coluna}_kurtosis"] = valores.kurtosis()
-        row[f"{coluna}_iqr"] = q75 - q25
-        row[f"{coluna}_rms"] = rms
-        row[f"{coluna}_energia"] = np.sum(valores**2)
-        row[f"{coluna}_pico_a_pico"] = val_max - val_min
-        row[f"{coluna}_fator_crista"] = np.max(np.abs(valores)) / rms if rms > 0 else 0
+        row[f"{coluna}_rms"] = np.sqrt(np.mean(valores**2))
 
     return row
 
 
-def collect_files():
-    files_with_class = []
+def extract_features(window_length=50, min_window_length=10):
+    dados_extraidos = []
 
     for condicao, folder in FOLDERS.items():
         files = [
@@ -125,51 +115,43 @@ def collect_files():
         print(f"Arquivos encontrados: {len(files)}")
 
         for file_path in files:
-            files_with_class.append((file_path, condicao))
-
-    return files_with_class
-
-
-def extract_features_from_files(files_with_class, window_length=50, step=50):
-    dados_extraidos = []
-
-    for file_path, condicao in files_with_class:
-        try:
             df = pd.read_excel(file_path)
             df = df.drop(columns=DROP_COLUMNS, errors="ignore")
 
             _, df_regime, _ = transitory_stacionary(df)
-            df_regime = df_regime.dropna().reset_index(drop=True)
+            df_regime = df_regime.dropna()
 
             if df_regime.empty:
                 print(f"Aviso: regime permanente vazio em {os.path.basename(file_path)}")
                 continue
 
-            for inicio in range(0, len(df_regime) - window_length + 1, step):
+            for inicio in range(0, len(df_regime), window_length):
                 janela = df_regime.iloc[inicio : inicio + window_length]
-                dados_extraidos.append(
-                    window_statistics(
-                        janela,
-                        condicao=condicao,
-                        arquivo=os.path.basename(file_path),
+
+                if len(janela) >= min_window_length:
+                    dados_extraidos.append(
+                        window_statistics(
+                            janela,
+                            condicao=condicao,
+                        )
                     )
-                )
-        except Exception as exc:
-            print(f"Aviso: falha ao processar {file_path}: {exc}")
 
     return pd.DataFrame(dados_extraidos)
 
 
-def train_knn(train_features, test_features):
-    train_groups = train_features["arquivo"]
-    X_train = train_features.drop(columns=["condicao", "arquivo"])
-    y_train = train_features["condicao"]
-    X_test = test_features.drop(columns=["condicao", "arquivo"])
-    y_test = test_features["condicao"]
+def train_knn(df_features):
+    X = df_features.drop(columns=["condicao"])
+    y = df_features["condicao"]
 
-    X_train = X_train.replace([np.inf, -np.inf], np.nan).fillna(0)
-    X_test = X_test.replace([np.inf, -np.inf], np.nan).fillna(0)
-    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.4,
+        random_state=42,
+        stratify=y,
+    )
 
     pipeline = Pipeline(
         [
@@ -184,36 +166,29 @@ def train_knn(train_features, test_features):
         "knn__metric": ["euclidean", "manhattan"],
     }
 
-    cv = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=42)
-
     grid_search = GridSearchCV(
         estimator=pipeline,
         param_grid=param_grid,
-        cv=cv,
-        scoring="balanced_accuracy",
+        cv=3,
+        scoring="accuracy",
         n_jobs=-1,
     )
 
-    grid_search.fit(X_train, y_train, groups=train_groups)
+    grid_search.fit(X_train, y_train)
 
     print("\n=== Dataset extraido ===")
-    print(f"Janelas de treino: {len(train_features)}")
-    print(f"Janelas de teste: {len(test_features)}")
-    print(f"Arquivos de treino: {train_groups.nunique()}")
-    print(f"Arquivos de teste: {test_features['arquivo'].nunique()}")
-    print("Janelas de treino por classe:")
-    print(y_train.value_counts())
-    print("Janelas de teste por classe:")
-    print(y_test.value_counts())
+    print(f"Total de janelas: {len(df_features)}")
+    print("Janelas por classe:")
+    print(y.value_counts())
 
     print("\n=== Melhor KNN ===")
     print("Melhores hiperparametros:", grid_search.best_params_)
-    print("Melhor balanced accuracy media:", grid_search.best_score_)
+    print("Melhor acuracia media:", grid_search.best_score_)
 
     y_pred = grid_search.predict(X_test)
     y_proba = grid_search.predict_proba(X_test)
 
-    print("\n=== Relatorio no conjunto de teste separado por arquivo ===")
+    print("\n=== Relatorio no conjunto de teste ===")
     print(classification_report(y_test, y_pred, zero_division=0))
 
     labels = grid_search.best_estimator_.classes_
@@ -274,15 +249,14 @@ def train_knn(train_features, test_features):
         "recall_macro": recall_macro,
         "f1_macro": f1_macro,
         "roc_auc_macro_ovr": roc_auc_macro,
-        "best_cv_balanced_accuracy": grid_search.best_score_,
-        "train_windows": len(train_features),
-        "test_windows": len(test_features),
-        "train_original_files": train_groups.nunique(),
-        "test_original_files": test_features["arquivo"].nunique(),
+        "best_cv_accuracy": grid_search.best_score_,
+        "total_windows": len(df_features),
+        "train_windows": len(X_train),
+        "test_windows": len(X_test),
     }
 
     save_training_artifacts(
-        df_features=pd.concat([train_features, test_features], ignore_index=True),
+        df_features=df_features,
         feature_names=X_train.columns,
         metrics=metrics,
         classification_text=classification_report(y_test, y_pred, zero_division=0),
@@ -346,16 +320,6 @@ def load_model(path=MODEL_PATH):
 
 
 if __name__ == "__main__":
-    files = collect_files()
-    train_files, test_files = train_test_split(
-        files,
-        test_size=0.2,
-        random_state=42,
-        stratify=[condicao for _, condicao in files],
-    )
-
-    train_features = extract_features_from_files(train_files, window_length=50, step=50)
-    test_features = extract_features_from_files(test_files, window_length=50, step=50)
-
-    best_model = train_knn(train_features, test_features)
+    features = extract_features(window_length=50)
+    best_model = train_knn(features)
     export_model(best_model)
